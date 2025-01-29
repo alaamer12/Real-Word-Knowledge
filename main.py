@@ -326,11 +326,11 @@ def commit_and_push(message: Optional[str] = None, enable_logging: bool = False)
         add_and_commit_changes(message, enable_logging)
         
         # Calculate size before pushing
-        console.print("\n[bold blue]Calculating Repository Size...[/bold blue]")
+        console.print("\n[bold blue]Calculating Changes Size...[/bold blue]")
         total_size = calculate_repository_size()
         if total_size is not None:
             size_str = format_size(total_size)
-            console.print(f"[blue]ℹ[/blue] Total size to be pushed: {size_str}")
+            console.print(f"[blue]ℹ[/blue] Size of changes to be pushed: {size_str}")
             
             if not handle_large_repository_warning(total_size):
                 return
@@ -365,12 +365,42 @@ def initialize_environment(enable_logging: bool) -> None:
         console.print("[green]✓[/green] Logging enabled")
 
 def calculate_repository_size() -> Optional[int]:
-    size_thread = threading.Thread(target=calculate_git_size, args=(current_directory,))
-    size_thread.start()
-    size_thread.join(timeout=5)
+    """Calculate the total size of files to be pushed."""
     try:
-        return size_queue.get_nowait()
-    except Exception:
+        # Get list of staged files
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True,
+            text=True,
+            check=True
+        ).stdout.splitlines()
+        
+        # Get list of changed but not staged files
+        changed = subprocess.run(
+            ["git", "diff", "--name-only"],
+            capture_output=True,
+            text=True,
+            check=True
+        ).stdout.splitlines()
+        
+        # Combine both lists and remove duplicates
+        files_to_push = list(set(staged + changed))
+        
+        if not files_to_push:
+            return 0
+            
+        total_size = 0
+        for file in files_to_push:
+            try:
+                file_path = os.path.join(current_directory, file)
+                if os.path.isfile(file_path):
+                    total_size += os.path.getsize(file_path)
+            except (OSError, IOError):
+                continue
+                
+        return total_size
+        
+    except subprocess.CalledProcessError:
         return None
 
 def display_size_info(total_size: int) -> None:
