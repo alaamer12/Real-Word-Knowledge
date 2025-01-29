@@ -235,7 +235,6 @@ def push_changes_with_progress(total_size: Optional[int], enable_logging: bool) 
             cwd=current_directory,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            bufsize=1,
             universal_newlines=False
         )
         
