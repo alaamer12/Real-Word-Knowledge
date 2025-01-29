@@ -316,16 +316,7 @@ def commit_and_push(message: Optional[str] = None, enable_logging: bool = False)
             console.print("[blue]ℹ[/blue] No changes to commit after adding .gitkeep files")
             return
         
-        # Handle repository creation/configuration before committing
-        if needs_repo_creation:
-            console.print("\n[bold blue]Configuring GitHub Repository...[/bold blue]")
-            if not create_github_repo(directory_name, enable_logging):
-                return
-        
-        console.print("\n[bold blue]Committing Changes...[/bold blue]")
-        add_and_commit_changes(message, enable_logging)
-        
-        # Calculate size before pushing
+        # Calculate size before adding or committing
         console.print("\n[bold blue]Calculating Changes Size...[/bold blue]")
         total_size = calculate_repository_size()
         if total_size is not None:
@@ -334,6 +325,15 @@ def commit_and_push(message: Optional[str] = None, enable_logging: bool = False)
             
             if not handle_large_repository_warning(total_size):
                 return
+        
+        # Handle repository creation/configuration before committing
+        if needs_repo_creation:
+            console.print("\n[bold blue]Configuring GitHub Repository...[/bold blue]")
+            if not create_github_repo(directory_name, enable_logging):
+                return
+        
+        console.print("\n[bold blue]Committing Changes...[/bold blue]")
+        add_and_commit_changes(message, enable_logging)
         
         console.print("\n[bold blue]Pushing Changes...[/bold blue]")
         push_changes_with_progress(total_size, enable_logging)
@@ -367,37 +367,25 @@ def initialize_environment(enable_logging: bool) -> None:
 def calculate_repository_size() -> Optional[int]:
     """Calculate the total size of files to be pushed."""
     try:
-        # Get list of staged files
-        staged = subprocess.run(
-            ["git", "diff", "--cached", "--name-only"],
+        # Get list of modified files (including untracked)
+        status_output = subprocess.run(
+            ["git", "status", "--porcelain"],
             capture_output=True,
             text=True,
             check=True
         ).stdout.splitlines()
         
-        # Get list of changed but not staged files
-        changed = subprocess.run(
-            ["git", "diff", "--name-only"],
-            capture_output=True,
-            text=True,
-            check=True
-        ).stdout.splitlines()
-        
-        # Combine both lists and remove duplicates
-        files_to_push = list(set(staged + changed))
-        
-        if not files_to_push:
+        if not status_output:
             return 0
             
         total_size = 0
-        for file in files_to_push:
-            try:
-                file_path = os.path.join(current_directory, file)
+        for line in status_output:
+            # Status format is "XY PATH" where X is staged status and Y is unstaged
+            if len(line) > 3:  # Make sure we have a valid line
+                file_path = os.path.join(current_directory, line[3:].strip('"'))
                 if os.path.isfile(file_path):
                     total_size += os.path.getsize(file_path)
-            except (OSError, IOError):
-                continue
-                
+                    
         return total_size
         
     except subprocess.CalledProcessError:
